@@ -1,17 +1,14 @@
+import os
+import requests
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import os
-from portalsdk import APIContext, APIMethodType, APIRequest
 
-# Inicializa FastAPI
 app = FastAPI(title="M-Pesa Backend")
 
-# Dados do M-Pesa do .env
 API_KEY = os.getenv("MPESA_API_KEY")
 PUBLIC_KEY = os.getenv("MPESA_PUBLIC_KEY")
-SERVICE_PROVIDER_CODE = os.getenv("MPESA_SERVICE_PROVIDER_CODE", "171717")  # exemplo
+SERVICE_PROVIDER_CODE = os.getenv("MPESA_SERVICE_PROVIDER_CODE", "171717")
 
-# Modelo para requisição de pagamento
 class PaymentRequest(BaseModel):
     msisdn: str
     amount: float
@@ -19,31 +16,23 @@ class PaymentRequest(BaseModel):
 
 @app.post("/c2b-payment/")
 def c2b_payment(request: PaymentRequest):
-    try:
-        context = APIContext()
-        context.api_key = API_KEY
-        context.public_key = PUBLIC_KEY
-        context.ssl = True
-        context.method_type = APIMethodType.POST
-        context.address = "api.sandbox.vm.co.mz"
-        context.port = 18352
-        context.path = "/ipg/v1x/c2bPayment/singleStage/"
-        context.add_header("Origin", "*")
-        
-        context.add_parameter("input_TransactionReference", request.reference)
-        context.add_parameter("input_CustomerMSISDN", request.msisdn)
-        context.add_parameter("input_Amount", str(request.amount))
-        context.add_parameter("input_ThirdPartyReference", request.reference)
-        context.add_parameter("input_ServiceProviderCode", SERVICE_PROVIDER_CODE)
-        
-        api_request = APIRequest(context)
-        response = api_request.execute()
+    url = "https://api.sandbox.vm.co.mz/ipg/v1x/c2bPayment/singleStage/"
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json",
+        "Origin": "*"
+    }
+    payload = {
+        "input_TransactionReference": request.reference,
+        "input_CustomerMSISDN": request.msisdn,
+        "input_Amount": str(request.amount),
+        "input_ThirdPartyReference": request.reference,
+        "input_ServiceProviderCode": SERVICE_PROVIDER_CODE
+    }
 
-        return {
-            "status_code": response.status_code,
-            "result": response.result,
-            "parameters": response.parameters
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    response = requests.post(url, json=payload, headers=headers)
+    
+    if response.status_code != 200:
+        raise HTTPException(status_code=response.status_code, detail=response.text)
+    
+    return response.json()
