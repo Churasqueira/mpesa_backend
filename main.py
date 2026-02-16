@@ -1,62 +1,136 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 import os
-import requests
+import uuid
 
 app = FastAPI(title="MPESA Backend")
 
-# =========================
+# =====================================================
+# CORS CONFIG (Resolve erro OPTIONS 405)
+# =====================================================
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Em produção, colocar domínio específico
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# =====================================================
 # Health Check
-# =========================
+# =====================================================
 @app.get("/health")
 def health_check():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "message": "Backend M-Pesa rodando!"
+    }
 
-# =========================
-# Página raiz
-# =========================
+# =====================================================
+# Root
+# =====================================================
 @app.get("/")
 def root():
-    return {"message": "MPESA Backend ativo!"}
+    return {
+        "message": "MPESA Backend ativo!"
+    }
 
-# =========================
-# Rota de pagamento C2B
-# =========================
+# =====================================================
+# C2B Payment (Cliente paga plataforma)
+# =====================================================
 @app.post("/c2b-payment/")
 async def c2b_payment(request: Request):
-    """
-    Recebe pagamentos C2B do Mpesa.
-    Substitua esta função com sua lógica real de processamento.
-    """
     try:
         data = await request.json()
-        print("Pagamento recebido:", data)
 
-        # =========================
-        # Exemplo: enviar dados para API Mpesa (preencher detalhes reais)
-        # =========================
-        mpesa_api_url = os.getenv("MPESA_API_URL", "https://sandbox.safaricom.co.ke/mpesa/c2b/v1/simulate")
-        mpesa_token = os.getenv("MPESA_API_TOKEN", "SEU_TOKEN_AQUI")
+        msisdn = data.get("msisdn")
+        amount = data.get("amount")
+        reference = data.get("reference")
 
-        headers = {
-            "Authorization": f"Bearer {mpesa_token}",
-            "Content-Type": "application/json"
-        }
+        # Validação básica
+        if not msisdn or not amount or not reference:
+            return JSONResponse(
+                content={
+                    "error": "Campos obrigatórios: msisdn, amount, reference"
+                },
+                status_code=400
+            )
 
-        payload = {
-            "ShortCode": data.get("ShortCode", "600000"),
-            "CommandID": data.get("CommandID", "CustomerPayBillOnline"),
-            "Amount": data.get("Amount", 1),
-            "Msisdn": data.get("Msisdn", "254700000000"),
-            "BillRefNumber": data.get("BillRefNumber", "Teste001")
-        }
+        # Simulação de transação
+        transaction_id = f"MPESA_{uuid.uuid4().hex[:8]}"
+        conversation_id = f"CONV_{uuid.uuid4().hex[:8]}"
 
-        # Envia requisição para Mpesa (descomente quando estiver pronto)
-        # response = requests.post(mpesa_api_url, json=payload, headers=headers)
-        # return JSONResponse(content={"status": "success", "mpesa_response": response.json()})
-
-        # Por enquanto, apenas retorna o payload recebido
-        return JSONResponse(content={"status": "success", "data": payload})
+        return JSONResponse(
+            content={
+                "status": "SUCCESS",
+                "TransactionID": transaction_id,
+                "ConversationID": conversation_id,
+                "ResponseCode": "INS-0",
+                "ResponseDesc": "Request processed successfully"
+            },
+            status_code=200
+        )
 
     except Exception as e:
-        return JSONResponse(content={"status": "error", "message": str(e)}, status_code=400)
+        return JSONResponse(
+            content={
+                "error": str(e)
+            },
+            status_code=500
+        )
+
+# =====================================================
+# B2C Payment (Plataforma paga cliente)
+# =====================================================
+@app.post("/b2c-payment/")
+async def b2c_payment(request: Request):
+    try:
+        data = await request.json()
+
+        msisdn = data.get("msisdn")
+        amount = data.get("amount")
+        reference = data.get("reference")
+
+        if not msisdn or not amount or not reference:
+            return JSONResponse(
+                content={
+                    "error": "Campos obrigatórios: msisdn, amount, reference"
+                },
+                status_code=400
+            )
+
+        transaction_id = f"MPESA_{uuid.uuid4().hex[:8]}"
+        conversation_id = f"CONV_{uuid.uuid4().hex[:8]}"
+
+        return JSONResponse(
+            content={
+                "status": "SUCCESS",
+                "TransactionID": transaction_id,
+                "ConversationID": conversation_id,
+                "ResponseCode": "INS-0",
+                "ResponseDesc": "Payout processed successfully"
+            },
+            status_code=200
+        )
+
+    except Exception as e:
+        return JSONResponse(
+            content={
+                "error": str(e)
+            },
+            status_code=500
+        )
+
+# =====================================================
+# Transaction Status (Simulado)
+# =====================================================
+@app.get("/transaction-status/{reference}/")
+def transaction_status(reference: str):
+    return {
+        "reference": reference,
+        "status": "SUCCESS",
+        "TransactionID": f"MPESA_{reference}",
+        "amount": 50,
+        "msisdn": "258843330333"
+    }
